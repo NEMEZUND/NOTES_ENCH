@@ -7,7 +7,6 @@ from base64 import b64encode
 import os
 import pyperclip
 
-
 class GifViewer:
     def __init__(self, gif_path):
         self.gif_path = gif_path
@@ -41,7 +40,6 @@ class GifViewer:
         image.save(img_byte_array, format="GIF")
         return img_byte_array.getvalue()
 
-
 # Подключение к базе данных PostgreSQL
 conn = psycopg2.connect(
     dbname='Notes',
@@ -66,7 +64,6 @@ with conn.cursor() as cursor:
     cursor.execute(create_table_query)
 conn.commit()
 
-
 # Функция для вставки заметки в базу данных
 def insert_note(title, content, image_path=None):
     if not title.strip():
@@ -80,11 +77,10 @@ def insert_note(title, content, image_path=None):
     RETURNING id, created_at, updated_at;
     """
     with conn.cursor() as cursor:
-        cursor.execute(insert_query, (title, content, image_bytes))
+        cursor.execute(insert_query, (title, content, psycopg2.Binary(image_bytes)))
         result = cursor.fetchone()
     conn.commit()
     return result
-
 
 # Функция для обновления заметки в базе данных
 def update_note(note_id, title, content, image_path, paste_from_clipboard=False):
@@ -101,14 +97,13 @@ def update_note(note_id, title, content, image_path, paste_from_clipboard=False)
     RETURNING updated_at;
     """
     with conn.cursor() as cursor:
-        cursor.execute(update_query, (title, content, image_bytes, note_id))
+        cursor.execute(update_query, (title, content, psycopg2.Binary(image_bytes), note_id))
         updated_at = cursor.fetchone()[0]
     conn.commit()
 
     window_main.write_event_value('update_note', (note_id, title, content, image_path, updated_at))
 
     return updated_at
-
 
 # Функция для отображения полной заметки в отдельном окне
 def display_full_note_window(note):
@@ -137,7 +132,6 @@ def display_full_note_window(note):
             break
 
     window_full_note.close()
-
 
 # Функция для отображения заметок с учетом сокращенного текста
 def display_notes_with_pagination(notes):
@@ -196,7 +190,6 @@ def display_notes_with_pagination(notes):
 
         window_notes.close()
 
-
 # Функция для редактирования заметок с учетом сокращенного текста
 def edit_note_window(note_id):
     note_query = """
@@ -213,7 +206,7 @@ def edit_note_window(note_id):
     if image_bytes:
         temp_image_path = f'temp_image_{note_id}.png'
         with open(temp_image_path, 'wb') as f:
-            f.write(image_bytes)
+            Image.open(io.BytesIO(image_bytes)).convert('RGBA').save(f, format='PNG')
         image_path = temp_image_path
 
     short_content = content[:200] + '...' if len(content) > 200 else content
@@ -247,18 +240,23 @@ def edit_note_window(note_id):
     if image_path:
         os.remove(image_path)
 
-
 # Функция для преобразования изображения в байты
 def image_to_bytes(image_path):
     if image_path and image_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
-        with open(image_path, 'rb') as f:
-            return f.read()
+        if image_path.lower().endswith(('.jpg', '.jpeg')):
+            # Convert JPEG to PNG
+            img = Image.open(image_path).convert('RGBA')
+            png_byte_array = io.BytesIO()
+            img.save(png_byte_array, format='PNG')
+            return png_byte_array.getvalue()
+        else:
+            with open(image_path, 'rb') as f:
+                return f.read()
     elif image_path:
         sg.popup('Invalid image format! Please select a valid image file.')
         return None
     else:
         return None
-
 
 # Функция для удаления заметки
 def delete_note(note_id):
@@ -269,7 +267,6 @@ def delete_note(note_id):
     with conn.cursor() as cursor:
         cursor.execute(delete_query, (note_id,))
     conn.commit()
-
 
 # Функция для поиска заметок с учетом сокращенного отображения текста
 def search_notes(search_type, search_value):
@@ -300,7 +297,6 @@ def search_notes(search_type, search_value):
     with conn.cursor() as cursor:
         cursor.execute(search_query, params)
         return cursor.fetchall()
-
 
 # Графический интерфейс PySimpleGUI
 sg.theme('LightGrey1')
